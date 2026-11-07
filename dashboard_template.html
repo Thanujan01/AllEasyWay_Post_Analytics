@@ -1,0 +1,226 @@
+<title>AllEasyWay Posting Monitor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: status strip, three stacked day-charts sharing one date axis, drill-down table below */
+:root{
+  --bg:#faf8f5; --surface:#ffffff; --raise:#f4efe8; --line:#e6dfd6; --line-soft:#f0ebe4;
+  --fg:#1f1b17; --fg-dim:#6c6358; --fg-faint:#9a9086;
+  --accent:#d4651a; --on-accent:#ffffff;
+  --listing:#c2561a; --reel:#6a4bb8; --community:#1f7a63;
+  --font-display:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --font-body:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
+  --font-data:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14120f; --surface:#1e1b17; --raise:#272219; --line:#342f28; --line-soft:#262219;
+  --fg:#f2ede6; --fg-dim:#a39889; --fg-faint:#776d61;
+  --accent:#f08b3e; --on-accent:#14120f;
+  --listing:#f08b3e; --reel:#a68cf0; --community:#4fc0a2; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#14120f; --surface:#1e1b17; --raise:#272219; --line:#342f28; --line-soft:#262219;
+  --fg:#f2ede6; --fg-dim:#a39889; --fg-faint:#776d61;
+  --accent:#f08b3e; --on-accent:#14120f;
+  --listing:#f08b3e; --reel:#a68cf0; --community:#4fc0a2; color-scheme:dark;}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:28px 56px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:30px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+.eyebrow{font-family:var(--font-data);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0}
+h1{font-family:var(--font-display);font-weight:700;font-size:clamp(26px,5vw,38px);line-height:1.08;letter-spacing:-.02em;margin:10px 0 0;text-wrap:balance}
+.sub{color:var(--fg-dim);margin:9px 0 0;max-width:64ch;font-size:15px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tile{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.tile b{font-family:var(--font-display);font-size:29px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile span{font-size:11.5px;color:var(--fg-dim)}
+.tile.l b{color:var(--listing)} .tile.r b{color:var(--reel)} .tile.c b{color:var(--community)}
+
+.rangebar{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.rangebar strong{font-family:var(--font-data);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--fg-faint);font-weight:500;margin-right:3px}
+.rbtn{font-family:var(--font-body);font-size:12.5px;padding:5px 13px;border-radius:999px;border:1px solid var(--line);
+  background:var(--surface);color:var(--fg-dim);cursor:pointer}
+.rbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+
+.chart{display:flex;flex-direction:column;gap:7px}
+.chead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.chead h2{font-family:var(--font-display);font-size:15px;font-weight:600;margin:0;display:flex;align-items:center;gap:8px}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+.chead .stat{font-family:var(--font-data);font-size:12px;color:var(--fg-dim);font-variant-numeric:tabular-nums}
+.plot{display:flex;align-items:flex-end;gap:2px;height:112px;padding:0 2px;
+  border-bottom:1px solid var(--line);border-top:1px dashed var(--line-soft);position:relative}
+.plot button{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;background:none;border:none;padding:0 0 0 0;cursor:pointer}
+.plot button i{display:block;width:100%;border-radius:2px 2px 0 0;min-height:1px;opacity:.85}
+.plot button:hover i,.plot button[aria-pressed="true"] i{opacity:1}
+.plot button[aria-pressed="true"]{background:var(--raise)}
+.ymax{position:absolute;top:-8px;right:0;font-family:var(--font-data);font-size:10px;color:var(--fg-faint);background:var(--bg);padding:0 3px}
+.xaxis{display:flex;gap:2px;padding:0 2px}
+.xaxis span{flex:1;min-width:0;text-align:center;font-family:var(--font-data);font-size:9px;color:var(--fg-faint);
+  white-space:nowrap;overflow:hidden}
+
+.day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.dayhead{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline}
+.dayhead h2{font-family:var(--font-display);font-size:19px;margin:0;letter-spacing:-.01em}
+.dayhead .k{font-family:var(--font-data);font-size:12px;color:var(--fg-dim);display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.dayhead .k b{font-weight:500}
+#dsearch{width:100%;font-family:var(--font-body);font-size:13.5px;padding:9px 14px;border:1px solid var(--line);
+  border-radius:8px;background:var(--bg);color:var(--fg)}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:9px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-family:var(--font-data);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--fg-faint);
+  text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface);position:sticky;top:0}
+td{padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+tr:last-child td{border-bottom:none}
+.mono{font-family:var(--font-data);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--fg-dim)}
+.ttl{min-width:200px;font-weight:500}
+.ttl a{color:var(--fg);text-decoration:none;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.ttl a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.ttl em{display:block;font-style:normal;font-size:11.5px;color:var(--fg-faint);margin-top:2px}
+.cat{color:var(--fg-dim);min-width:130px}
+.cat em{display:block;font-style:normal;font-size:11.5px;color:var(--fg-faint);margin-top:2px}
+.num{text-align:right}
+.pill{display:inline-block;font-family:var(--font-data);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.k-l{color:var(--listing)} .k-r{color:var(--reel)} .k-c{color:var(--community)}
+.empty{padding:26px;text-align:center;color:var(--fg-dim);font-size:14px}
+footer{border-top:1px solid var(--line);padding-top:16px;font-size:12.5px;color:var(--fg-faint);line-height:1.65}
+footer code{font-family:var(--font-data);font-size:11.5px;color:var(--fg-dim)}
+@media (max-width:560px){.plot{height:88px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow" id="eyebrow">alleasyway.com</p>
+  <h1>Daily posting monitor</h1>
+  <p class="sub">Listings, reels and community posts per day, in Sri Lanka time. Click any bar to open that day&rsquo;s posts in full.</p>
+</header>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="rangebar" id="rangebar"><strong>Range</strong></div>
+
+<div class="chart" id="ch-l"></div>
+<div class="chart" id="ch-r"></div>
+<div class="chart" id="ch-c"></div>
+
+<div class="day" id="day"></div>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+const P = __PAYLOAD__;
+const KIND = {l:{name:'Listings',cls:'listing',pill:'k-l',label:'Listing'},
+              r:{name:'Reels',cls:'reel',pill:'k-r',label:'Reel'},
+              c:{name:'Community posts',cls:'community',pill:'k-c',label:'Community'}};
+const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nf = n => Number(n).toLocaleString('en-US');
+const fmtDay = d => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+
+let range = 30, sel = null, dq = '';
+const S = P.series;
+
+function visible(){ return range==='all' ? S : S.slice(-range); }
+
+function tiles(){
+  const v = visible(), sum = k => v.reduce((a,x)=>a+x[k],0);
+  const last = S[S.length-1] || {l:0,r:0,c:0,d:'—'};
+  const days = v.length || 1;
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile"><b>${nf(sum('l')+sum('r')+sum('c'))}</b><span>Posts in range</span></div>
+    <div class="tile l"><b>${nf(sum('l'))}</b><span>Listings</span></div>
+    <div class="tile r"><b>${nf(sum('r'))}</b><span>Reels</span></div>
+    <div class="tile c"><b>${nf(sum('c'))}</b><span>Community posts</span></div>
+    <div class="tile"><b>${(((sum('l')+sum('r')+sum('c'))/days)).toFixed(1)}</b><span>Average per day</span></div>`;
+}
+
+function chart(key){
+  const v = visible(), max = Math.max(1, ...v.map(x=>x[key]));
+  const total = v.reduce((a,x)=>a+x[key],0);
+  const peak = v.reduce((a,x)=>x[key]>a[key]?x:a, v[0]||{d:'',[key]:0});
+  const step = Math.max(1, Math.ceil(v.length/8));
+  return `<div class="chead">
+      <h2><span class="dot" style="background:var(--${KIND[key].cls})"></span>${KIND[key].name}</h2>
+      <span class="stat">${nf(total)} in range · peak ${nf(peak[key])} on ${esc(peak.d||'—')}</span>
+    </div>
+    <div class="plot" role="group" aria-label="${KIND[key].name} per day">
+      <span class="ymax">${nf(max)}</span>
+      ${v.map(x=>`<button data-d="${x.d}" aria-pressed="${x.d===sel}" title="${esc(fmtDay(x.d))} — ${x[key]} ${KIND[key].name.toLowerCase()}" aria-label="${esc(fmtDay(x.d))}, ${x[key]} ${KIND[key].name.toLowerCase()}"><i style="height:${(x[key]/max*100).toFixed(2)}%;background:var(--${KIND[key].cls})"></i></button>`).join('')}
+    </div>
+    <div class="xaxis">${v.map((x,i)=>`<span>${i%step===0?esc(x.d.slice(5)):''}</span>`).join('')}</div>`;
+}
+
+function dayPanel(){
+  const el = document.getElementById('day');
+  if(!sel){ el.innerHTML = `<div class="empty">Click a bar in any chart to see that day&rsquo;s posts.</div>`; return; }
+  const rows = P.posts[sel];
+  const row = S.find(x=>x.d===sel) || {l:0,r:0,c:0};
+  const head = `<div class="dayhead">
+      <h2>${esc(fmtDay(sel))}</h2>
+      <div class="k"><span>Listings <b>${row.l}</b></span><span>Reels <b>${row.r}</b></span><span>Community <b>${row.c}</b></span><span>Total <b>${row.l+row.r+row.c}</b></span></div>
+    </div>`;
+  if(!rows){ el.innerHTML = head + `<div class="empty">Per-post detail is kept for the most recent 120 days. This day has counts only.</div>`; return; }
+  const q = dq.toLowerCase();
+  const list = rows.filter(r => !q || (r[3]+' '+r[4]+' '+r[5]+' '+r[6]+' '+r[7]+' '+r[8]+' '+r[9]).toLowerCase().includes(q));
+  el.innerHTML = head +
+    `<input type="search" id="dsearch" placeholder="Search this day — title, brand, type, category, city…" aria-label="Search this day's posts" value="${esc(dq)}">` +
+    (list.length ? `<div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Kind</th><th>Title</th><th>Category</th><th class="num">Price</th><th>City</th><th class="num">Ad&nbsp;ID</th></tr></thead>
+      <tbody>${list.map(r=>{
+        const bm=[r[4],r[5],r[6]].filter(Boolean).join(' · ');
+        const sub=[r[8]].filter(Boolean).join('');
+        const price = r[10]===''? '—' : nf(r[10])+' '+esc(r[11]);
+        return `<tr>
+          <td class="mono">${esc(r[1])}</td>
+          <td><span class="pill ${KIND[r[2]].pill}">${KIND[r[2]].label}</span></td>
+          <td class="ttl"><a href="https://alleasyway.com/${r[2]==='r'?'reel':'annonce'}/${esc(r[12])}" target="_blank" rel="noopener">${esc(r[3])||'untitled'}</a>${bm?`<em>${esc(bm)}</em>`:''}</td>
+          <td class="cat">${esc(r[7]||'—')}${sub?`<em>${esc(sub)}</em>`:''}</td>
+          <td class="mono num">${price}</td>
+          <td class="mono">${esc(r[9]||'—')}</td>
+          <td class="mono num">${r[0]}</td></tr>`;}).join('')}</tbody></table></div>
+      <p class="mono" style="font-size:12px;margin:0">Showing ${list.length} of ${rows.length} posts.</p>`
+    : `<div class="empty">No post on this day matches that search.</div>`);
+  const s = document.getElementById('dsearch');
+  s.addEventListener('input', e => { dq = e.target.value; const p=e.target.selectionStart; dayPanel();
+    const n=document.getElementById('dsearch'); n.focus(); n.setSelectionRange(p,p); });
+}
+
+function render(){
+  tiles();
+  document.getElementById('ch-l').innerHTML = chart('l');
+  document.getElementById('ch-r').innerHTML = chart('r');
+  document.getElementById('ch-c').innerHTML = chart('c');
+  document.querySelectorAll('.plot').forEach(p => p.onclick = e => {
+    const b = e.target.closest('button[data-d]'); if(!b) return;
+    sel = b.dataset.d === sel ? null : b.dataset.d; dq=''; render();
+    if(sel) document.getElementById('day').scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+  dayPanel();
+}
+
+const ranges=[['14 days',14],['30 days',30],['90 days',90],['All',  'all']];
+document.getElementById('rangebar').insertAdjacentHTML('beforeend',
+  ranges.map(([n,v])=>`<button class="rbtn" data-r="${v}" aria-pressed="${v===range}">${n}</button>`).join(''));
+document.getElementById('rangebar').addEventListener('click', e=>{
+  const b=e.target.closest('.rbtn'); if(!b) return;
+  range = b.dataset.r==='all' ? 'all' : +b.dataset.r;
+  document.querySelectorAll('.rbtn').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  render();
+});
+
+const last = P.runs[P.runs.length-1];
+if(last){
+  document.getElementById('eyebrow').textContent = 'alleasyway.com · last collected ' + last.at.replace('T',' ').slice(0,16);
+  document.getElementById('foot').innerHTML =
+    `Collected twice daily at 00:00 and 12:00 Sri Lanka time. Latest run added <code>${last.added}</code> new posts for a total of <code>${nf(last.total)}</code>; ad-number coverage <code>${last.coverage}%</code>. ` +
+    `Posts are keyed by the site&rsquo;s sequential ad number, so a post counted once is never dropped from history even if the seller later removes it. Days before the most recent 120 keep counts without per-post detail.`;
+}
+sel = S.length ? S[S.length-1].d : null;
+render();
+</script>

@@ -1,0 +1,35 @@
+name: Refresh dashboard
+
+on:
+  schedule:
+    # 06:30 and 18:30 UTC = 12:00 and 00:00 Asia/Colombo
+    - cron: '30 6,18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Crawl and rebuild
+        run: python3 collector.py --data data.json --out index.html
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json index.html
+          git diff --quiet --cached || git commit -m "Refresh: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push

@@ -138,9 +138,9 @@ def build(posts, runs, out):
                           p['model'], p['type'], p['cat'], p['sub'], p['city'],
                           '' if p['price'] is None else p['price'], p['cur'], p['uid']])
     series = [{'d': d, 'l': v['listing'], 'r': v['reel'], 'c': v['community']} for d, v in sorted(days.items())]
-    # keep full detail for the most recent 120 days; older days keep their counts only
-    recent = {d: bydate[d] for d in sorted(bydate)[-120:]}
-    payload = {'series': series, 'posts': recent, 'runs': runs[-14:]}
+    # keep full detail for every day, so any date stays browsable
+    detail = {d: bydate[d] for d in sorted(bydate)}
+    payload = {'series': series, 'posts': detail, 'runs': runs[-14:]}
     tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard_template.html'), encoding='utf-8').read()
     open(out, 'w', encoding='utf-8').write(
         tpl.replace('__PAYLOAD__', json.dumps(payload, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')))

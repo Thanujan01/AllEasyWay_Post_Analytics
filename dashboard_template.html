@@ -2,12 +2,16 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: status strip, three stacked day-charts sharing one date axis, drill-down table below */
+/* Three tabs over one payload: Overview (daily + per-category), Posts (one date),
+   Categories (share of a day or a range). Category hues are a fixed identity map -
+   slot order never changes when a filter changes the set on screen. */
 :root{
   --bg:#faf8f5; --surface:#ffffff; --raise:#f4efe8; --line:#e6dfd6; --line-soft:#f0ebe4;
   --fg:#1f1b17; --fg-dim:#6c6358; --fg-faint:#9a9086;
   --accent:#d4651a; --on-accent:#ffffff;
   --listing:#c2561a; --reel:#6a4bb8; --community:#1f7a63;
+  --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100;
+  --c5:#e87ba4; --c6:#008300; --c7:#6250d6; --c8:#e34948;
   --font-display:'Archivo','Helvetica Neue',Arial,sans-serif;
   --font-body:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
   --font-data:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
@@ -16,24 +20,37 @@
   --bg:#14120f; --surface:#1e1b17; --raise:#272219; --line:#342f28; --line-soft:#262219;
   --fg:#f2ede6; --fg-dim:#a39889; --fg-faint:#776d61;
   --accent:#f08b3e; --on-accent:#14120f;
-  --listing:#f08b3e; --reel:#a68cf0; --community:#4fc0a2; color-scheme:dark;}}
+  --listing:#f08b3e; --reel:#a68cf0; --community:#4fc0a2;
+  --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500;
+  --c5:#d55181; --c6:#008300; --c7:#9085e9; --c8:#e66767; color-scheme:dark;}}
 :root[data-theme="dark"]{
   --bg:#14120f; --surface:#1e1b17; --raise:#272219; --line:#342f28; --line-soft:#262219;
   --fg:#f2ede6; --fg-dim:#a39889; --fg-faint:#776d61;
   --accent:#f08b3e; --on-accent:#14120f;
-  --listing:#f08b3e; --reel:#a68cf0; --community:#4fc0a2; color-scheme:dark;}
+  --listing:#f08b3e; --reel:#a68cf0; --community:#4fc0a2;
+  --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500;
+  --c5:#d55181; --c6:#008300; --c7:#9085e9; --c8:#e66767; color-scheme:dark;}
 
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--font-body);line-height:1.5;
   padding-left:max(16px,env(safe-area-inset-left,0px));
   padding-right:max(16px,env(safe-area-inset-right,0px));
-  padding-block:28px 56px;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:30px}
+  padding-block:28px 56px;-webkit-font-smoothing:antialiased;margin:0}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 
 .eyebrow{font-family:var(--font-data);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0}
 h1{font-family:var(--font-display);font-weight:700;font-size:clamp(26px,5vw,38px);line-height:1.08;letter-spacing:-.02em;margin:10px 0 0;text-wrap:balance}
 .sub{color:var(--fg-dim);margin:9px 0 0;max-width:64ch;font-size:15px}
+
+/* tabs */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{font-family:var(--font-display);font-size:14.5px;font-weight:600;padding:10px 16px;
+  background:none;border:none;border-bottom:2px solid transparent;color:var(--fg-dim);cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.tabs button:hover{color:var(--fg)}
+section[hidden]{display:none}
+.panel{display:flex;flex-direction:column;gap:26px}
 
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .tile{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:3px;min-width:0}
@@ -41,56 +58,94 @@ h1{font-family:var(--font-display);font-weight:700;font-size:clamp(26px,5vw,38px
 .tile span{font-size:11.5px;color:var(--fg-dim)}
 .tile.l b{color:var(--listing)} .tile.r b{color:var(--reel)} .tile.c b{color:var(--community)}
 
-.rangebar{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
-.rangebar strong{font-family:var(--font-data);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--fg-faint);font-weight:500;margin-right:3px}
+.ctl{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.ctl strong{font-family:var(--font-data);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--fg-faint);font-weight:500;margin-right:3px}
 .rbtn{font-family:var(--font-body);font-size:12.5px;padding:5px 13px;border-radius:999px;border:1px solid var(--line);
   background:var(--surface);color:var(--fg-dim);cursor:pointer}
 .rbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.rbtn .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:baseline}
+input[type="date"],input[type="search"]{font-family:var(--font-body);font-size:13.5px;padding:7px 12px;
+  border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)}
+input[type="search"]{width:100%;background:var(--bg)}
+.step{font-family:var(--font-data);font-size:14px;line-height:1;padding:7px 12px;border-radius:8px;
+  border:1px solid var(--line);background:var(--surface);color:var(--fg-dim);cursor:pointer}
+.step:disabled{opacity:.4;cursor:default}
 
+/* day charts */
 .chart{display:flex;flex-direction:column;gap:7px}
 .chead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
 .chead h2{font-family:var(--font-display);font-size:15px;font-weight:600;margin:0;display:flex;align-items:center;gap:8px}
-.dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
 .chead .stat{font-family:var(--font-data);font-size:12px;color:var(--fg-dim);font-variant-numeric:tabular-nums}
 .plot{display:flex;align-items:flex-end;gap:2px;height:112px;padding:0 2px;
   border-bottom:1px solid var(--line);border-top:1px dashed var(--line-soft);position:relative}
-.plot button{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;background:none;border:none;padding:0 0 0 0;cursor:pointer}
-.plot button i{display:block;width:100%;border-radius:2px 2px 0 0;min-height:1px;opacity:.85}
+.plot button{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;background:none;border:none;padding:0;cursor:pointer}
+.plot button i{display:block;width:100%;border-radius:4px 4px 0 0;min-height:1px;opacity:.85}
 .plot button:hover i,.plot button[aria-pressed="true"] i{opacity:1}
-.plot button[aria-pressed="true"]{background:var(--raise)}
+.plot button:hover{background:var(--raise)}
 .ymax{position:absolute;top:-8px;right:0;font-family:var(--font-data);font-size:10px;color:var(--fg-faint);background:var(--bg);padding:0 3px}
-.xaxis{display:flex;gap:2px;padding:0 2px}
+.xaxis{display:flex;gap:2px;padding:0 2px;overflow:hidden}
+/* labels sit every nth cell, so they may overflow their own cell into the empty
+   ones beside them; the row clips, and the first aligns left so nothing hangs off. */
 .xaxis span{flex:1;min-width:0;text-align:center;font-family:var(--font-data);font-size:9px;color:var(--fg-faint);
-  white-space:nowrap;overflow:hidden}
+  white-space:nowrap;overflow:visible}
+.xaxis span:first-child{text-align:left}
 
-.day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
-.dayhead{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline}
-.dayhead h2{font-family:var(--font-display);font-size:19px;margin:0;letter-spacing:-.01em}
-.dayhead .k{font-family:var(--font-data);font-size:12px;color:var(--fg-dim);display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
-.dayhead .k b{font-weight:500}
-#dsearch{width:100%;font-family:var(--font-body);font-size:13.5px;padding:9px 14px;border:1px solid var(--line);
-  border-radius:8px;background:var(--bg);color:var(--fg)}
+/* per-category small multiples */
+h2.sec{font-family:var(--font-display);font-size:19px;margin:0 0 2px;letter-spacing:-.01em}
+.secnote{color:var(--fg-dim);font-size:13.5px;margin:0}
+.smgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(236px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.sm{background:var(--surface);padding:14px 16px 12px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.smhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.smname{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;min-width:0}
+.smname span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.smtot{font-family:var(--font-data);font-size:15px;font-variant-numeric:tabular-nums;color:var(--fg)}
+.spark{display:flex;align-items:flex-end;gap:1px;height:38px;border-bottom:1px solid var(--line-soft)}
+.spark i{flex:1;min-width:0;border-radius:3px 3px 0 0;min-height:1px;opacity:.9}
+.smfoot{font-family:var(--font-data);font-size:9.5px;color:var(--fg-faint);display:flex;justify-content:space-between}
+
+/* categories tab */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.share{display:flex;gap:2px;height:30px;border-radius:5px;overflow:hidden}
+.share i{min-width:2px;border-radius:2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--fg-dim)}
+.legend span{display:flex;align-items:center;gap:6px}
+.hbars{display:flex;flex-direction:column;gap:9px}
+.hrow{display:grid;grid-template-columns:minmax(84px,132px) 1fr auto;gap:12px;align-items:center;font-size:12.5px}
+.hrow .hn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg-dim)}
+.htrack{background:var(--line-soft);border-radius:4px;height:16px}
+.htrack i{display:block;height:100%;border-radius:4px;min-width:2px}
+.hval{font-family:var(--font-data);font-size:12px;font-variant-numeric:tabular-nums;color:var(--fg);white-space:nowrap}
+.hval em{font-style:normal;color:var(--fg-faint);margin-left:6px}
+
 .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:9px}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th{font-family:var(--font-data);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--fg-faint);
   text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface);position:sticky;top:0}
+th.s{cursor:pointer;user-select:none}
+th.s:hover{color:var(--fg-dim)}
+th.s[aria-sort]{color:var(--accent)}
+th.s[aria-sort]::after{content:" \25BC"}
+th.s[aria-sort="ascending"]::after{content:" \25B2"}
 td{padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top}
 tr:last-child td{border-bottom:none}
 .mono{font-family:var(--font-data);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--fg-dim)}
 .ttl{min-width:200px;font-weight:500}
 .ttl a{color:var(--fg);text-decoration:none;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .ttl a:hover{color:var(--accent);border-bottom-color:var(--accent)}
-.ttl em{display:block;font-style:normal;font-size:11.5px;color:var(--fg-faint);margin-top:2px}
+.ttl em,.cat em{display:block;font-style:normal;font-size:11.5px;color:var(--fg-faint);margin-top:2px}
 .cat{color:var(--fg-dim);min-width:130px}
-.cat em{display:block;font-style:normal;font-size:11.5px;color:var(--fg-faint);margin-top:2px}
 .num{text-align:right}
 .pill{display:inline-block;font-family:var(--font-data);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
   padding:2px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
 .k-l{color:var(--listing)} .k-r{color:var(--reel)} .k-c{color:var(--community)}
 .empty{padding:26px;text-align:center;color:var(--fg-dim);font-size:14px}
+.daysum{font-family:var(--font-data);font-size:12px;color:var(--fg-dim);display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.daysum b{font-weight:500;color:var(--fg)}
 footer{border-top:1px solid var(--line);padding-top:16px;font-size:12.5px;color:var(--fg-faint);line-height:1.65}
 footer code{font-family:var(--font-data);font-size:11.5px;color:var(--fg-dim)}
-@media (max-width:560px){.plot{height:88px}}
+@media (max-width:560px){.plot{height:88px}.hrow{grid-template-columns:minmax(72px,96px) 1fr auto}
+  .tiles .tile:last-child{grid-column:1/-1}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -98,129 +153,339 @@ footer code{font-family:var(--font-data);font-size:11.5px;color:var(--fg-dim)}
 <header>
   <p class="eyebrow" id="eyebrow">alleasyway.com</p>
   <h1>Daily posting monitor</h1>
-  <p class="sub">Listings, reels and community posts per day, in Sri Lanka time. Click any bar to open that day&rsquo;s posts in full.</p>
+  <p class="sub">Listings, reels and community posts on alleasyway.com, in Sri Lanka time.</p>
 </header>
 
-<div class="tiles" id="tiles"></div>
+<nav class="tabs" role="tablist" id="tabs">
+  <button role="tab" data-t="overview"   aria-selected="true">Overview</button>
+  <button role="tab" data-t="posts"      aria-selected="false">Posts</button>
+  <button role="tab" data-t="categories" aria-selected="false">Categories</button>
+</nav>
 
-<div class="rangebar" id="rangebar"><strong>Range</strong></div>
+<section class="panel" id="p-overview" role="tabpanel">
+  <div class="tiles" id="tiles"></div>
+  <div class="ctl" id="rangebar"><strong>Range</strong></div>
+  <div class="chart" id="ch-l"></div>
+  <div class="chart" id="ch-r"></div>
+  <div class="chart" id="ch-c"></div>
+  <div>
+    <h2 class="sec">By category</h2>
+    <p class="secnote">One panel per category, same date range as above. Click a panel to open it on the Categories tab.</p>
+  </div>
+  <div class="smgrid" id="smgrid"></div>
+</section>
 
-<div class="chart" id="ch-l"></div>
-<div class="chart" id="ch-r"></div>
-<div class="chart" id="ch-c"></div>
+<section class="panel" id="p-posts" role="tabpanel" hidden>
+  <div class="ctl">
+    <strong>Date</strong>
+    <button class="step" id="pprev" title="Previous day with posts" aria-label="Previous day with posts">&larr;</button>
+    <input type="date" id="pdate" aria-label="Choose a date">
+    <button class="step" id="pnext" title="Next day with posts" aria-label="Next day with posts">&rarr;</button>
+    <button class="rbtn" id="platest">Latest</button>
+  </div>
+  <div class="ctl" id="pkind"><strong>Show</strong></div>
+  <input type="search" id="psearch" placeholder="Search this day &mdash; title, brand, type, category, city&hellip;" aria-label="Search this day's posts">
+  <div id="pbody"></div>
+</section>
 
-<div class="day" id="day"></div>
+<section class="panel" id="p-categories" role="tabpanel" hidden>
+  <div class="ctl" id="cmode"><strong>Period</strong></div>
+  <div class="ctl" id="cwhen"></div>
+  <div class="card" id="cchart"></div>
+  <div id="ctable"></div>
+</section>
 
 <footer id="foot"></footer>
 </div>
 
 <script>
 const P = __PAYLOAD__;
+
 const KIND = {l:{name:'Listings',cls:'listing',pill:'k-l',label:'Listing'},
               r:{name:'Reels',cls:'reel',pill:'k-r',label:'Reel'},
               c:{name:'Community posts',cls:'community',pill:'k-c',label:'Community'}};
+
+/* Fixed identity map: a category keeps its hue whatever else is on screen. */
+const CATS = [
+  {k:'Fashion',         n:'Fashion',        v:'c1'},
+  {k:'Other',           n:'Other',          v:'c2'},
+  {k:'Electronics',     n:'Electronics',    v:'c3'},
+  {k:'Vehicles',        n:'Vehicles',       v:'c4'},
+  {k:'Events',          n:'Events',         v:'c5'},
+  {k:'Real Estate',     n:'Real Estate',    v:'c6'},
+  {k:'Jobs and Career', n:'Jobs & Career',  v:'c7'},
+  {k:'Communaute',      n:'Community',      v:'c8'},
+];
+/* Reels carry no category of their own; the site labels community posts in French. */
+const ALIAS = {'Reel':'Other', 'Communauté':'Communaute'};
+const CATBY = Object.fromEntries(CATS.map(c => [c.k, c]));
+const normCat = raw => { const k = ALIAS[raw] || raw; return CATBY[k] ? k : 'Other'; };
+
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const nf = n => Number(n).toLocaleString('en-US');
+const nf  = n => Number(n).toLocaleString('en-US');
+const pct = (a,b) => b ? (100*a/b).toFixed(1)+'%' : '0%';
 const fmtDay = d => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+const $ = id => document.getElementById(id);
 
-let range = 30, sel = null, dq = '';
 const S = P.series;
+const DATES = S.map(x => x.d);
+const FIRST = DATES[0], LAST = DATES[DATES.length-1];
 
-function visible(){ return range==='all' ? S : S.slice(-range); }
+/* date -> category -> {l,r,c,t}, built once from the post detail. */
+const CATDAY = {};
+for(const d in P.posts){
+  const m = {};
+  for(const r of P.posts[d]){
+    const k = normCat(r[7]);
+    (m[k] = m[k] || {l:0,r:0,c:0,t:0})[r[2]]++;
+    m[k].t++;
+  }
+  CATDAY[d] = m;
+}
+function catTotals(dates){
+  const out = {}; for(const c of CATS) out[c.k] = {l:0,r:0,c:0,t:0};
+  for(const d of dates){ const m = CATDAY[d]; if(!m) continue;
+    for(const k in m){ const a = out[k], b = m[k]; a.l+=b.l; a.r+=b.r; a.c+=b.c; a.t+=b.t; } }
+  return out;
+}
 
+let tab = 'overview';
+let range = 30;                       // overview
+let pDate = LAST, pKind = 'all', pQ = '';   // posts
+let cMode = 'range', cDate = LAST, cRange = 30, cSort = {k:'t', dir:-1};  // categories
+
+const visibleDates = () => range === 'all' ? DATES : DATES.slice(-range);
+
+/* ---------- overview ---------- */
 function tiles(){
-  const v = visible(), sum = k => v.reduce((a,x)=>a+x[k],0);
-  const last = S[S.length-1] || {l:0,r:0,c:0,d:'—'};
+  const v = range === 'all' ? S : S.slice(-range);
+  const sum = k => v.reduce((a,x)=>a+x[k],0);
   const days = v.length || 1;
-  document.getElementById('tiles').innerHTML = `
+  $('tiles').innerHTML = `
     <div class="tile"><b>${nf(sum('l')+sum('r')+sum('c'))}</b><span>Posts in range</span></div>
     <div class="tile l"><b>${nf(sum('l'))}</b><span>Listings</span></div>
     <div class="tile r"><b>${nf(sum('r'))}</b><span>Reels</span></div>
     <div class="tile c"><b>${nf(sum('c'))}</b><span>Community posts</span></div>
-    <div class="tile"><b>${(((sum('l')+sum('r')+sum('c'))/days)).toFixed(1)}</b><span>Average per day</span></div>`;
+    <div class="tile"><b>${((sum('l')+sum('r')+sum('c'))/days).toFixed(1)}</b><span>Average per day</span></div>`;
 }
 
 function chart(key){
-  const v = visible(), max = Math.max(1, ...v.map(x=>x[key]));
+  const v = range === 'all' ? S : S.slice(-range);
+  const max = Math.max(1, ...v.map(x=>x[key]));
   const total = v.reduce((a,x)=>a+x[key],0);
   const peak = v.reduce((a,x)=>x[key]>a[key]?x:a, v[0]||{d:'',[key]:0});
   const step = Math.max(1, Math.ceil(v.length/8));
   return `<div class="chead">
       <h2><span class="dot" style="background:var(--${KIND[key].cls})"></span>${KIND[key].name}</h2>
-      <span class="stat">${nf(total)} in range · peak ${nf(peak[key])} on ${esc(peak.d||'—')}</span>
+      <span class="stat">${nf(total)} in range &middot; peak ${nf(peak[key])} on ${esc(peak.d||'—')}</span>
     </div>
     <div class="plot" role="group" aria-label="${KIND[key].name} per day">
       <span class="ymax">${nf(max)}</span>
-      ${v.map(x=>`<button data-d="${x.d}" aria-pressed="${x.d===sel}" title="${esc(fmtDay(x.d))} — ${x[key]} ${KIND[key].name.toLowerCase()}" aria-label="${esc(fmtDay(x.d))}, ${x[key]} ${KIND[key].name.toLowerCase()}"><i style="height:${(x[key]/max*100).toFixed(2)}%;background:var(--${KIND[key].cls})"></i></button>`).join('')}
+      ${v.map(x=>`<button data-d="${x.d}" title="${esc(fmtDay(x.d))} &mdash; ${x[key]} ${KIND[key].name.toLowerCase()}" aria-label="${esc(fmtDay(x.d))}, ${x[key]} ${KIND[key].name.toLowerCase()}, open this day"><i style="height:${(x[key]/max*100).toFixed(2)}%;background:var(--${KIND[key].cls})"></i></button>`).join('')}
     </div>
     <div class="xaxis">${v.map((x,i)=>`<span>${i%step===0?esc(x.d.slice(5)):''}</span>`).join('')}</div>`;
 }
 
-function dayPanel(){
-  const el = document.getElementById('day');
-  if(!sel){ el.innerHTML = `<div class="empty">Click a bar in any chart to see that day&rsquo;s posts.</div>`; return; }
-  const rows = P.posts[sel];
-  const row = S.find(x=>x.d===sel) || {l:0,r:0,c:0};
-  const head = `<div class="dayhead">
-      <h2>${esc(fmtDay(sel))}</h2>
-      <div class="k"><span>Listings <b>${row.l}</b></span><span>Reels <b>${row.r}</b></span><span>Community <b>${row.c}</b></span><span>Total <b>${row.l+row.r+row.c}</b></span></div>
-    </div>`;
-  if(!rows){ el.innerHTML = head + `<div class="empty">Per-post detail is kept for the most recent 120 days. This day has counts only.</div>`; return; }
-  const q = dq.toLowerCase();
-  const list = rows.filter(r => !q || (r[3]+' '+r[4]+' '+r[5]+' '+r[6]+' '+r[7]+' '+r[8]+' '+r[9]).toLowerCase().includes(q));
-  el.innerHTML = head +
-    `<input type="search" id="dsearch" placeholder="Search this day — title, brand, type, category, city…" aria-label="Search this day's posts" value="${esc(dq)}">` +
-    (list.length ? `<div class="scroll"><table>
-      <thead><tr><th>Time</th><th>Kind</th><th>Title</th><th>Category</th><th class="num">Price</th><th>City</th><th class="num">Ad&nbsp;ID</th></tr></thead>
-      <tbody>${list.map(r=>{
-        const bm=[r[4],r[5],r[6]].filter(Boolean).join(' · ');
-        const sub=[r[8]].filter(Boolean).join('');
-        const price = r[10]===''? '—' : nf(r[10])+' '+esc(r[11]);
-        return `<tr>
-          <td class="mono">${esc(r[1])}</td>
-          <td><span class="pill ${KIND[r[2]].pill}">${KIND[r[2]].label}</span></td>
-          <td class="ttl"><a href="https://alleasyway.com/${r[2]==='r'?'reel':'annonce'}/${esc(r[12])}" target="_blank" rel="noopener">${esc(r[3])||'untitled'}</a>${bm?`<em>${esc(bm)}</em>`:''}</td>
-          <td class="cat">${esc(r[7]||'—')}${sub?`<em>${esc(sub)}</em>`:''}</td>
-          <td class="mono num">${price}</td>
-          <td class="mono">${esc(r[9]||'—')}</td>
-          <td class="mono num">${r[0]}</td></tr>`;}).join('')}</tbody></table></div>
-      <p class="mono" style="font-size:12px;margin:0">Showing ${list.length} of ${rows.length} posts.</p>`
-    : `<div class="empty">No post on this day matches that search.</div>`);
-  const s = document.getElementById('dsearch');
-  s.addEventListener('input', e => { dq = e.target.value; const p=e.target.selectionStart; dayPanel();
-    const n=document.getElementById('dsearch'); n.focus(); n.setSelectionRange(p,p); });
+function smallMultiples(){
+  const dates = visibleDates();
+  const tot = catTotals(dates);
+  const ranked = CATS.slice().sort((a,b)=>tot[b.k].t - tot[a.k].t);
+  $('smgrid').innerHTML = ranked.map(c=>{
+    const daily = dates.map(d => (CATDAY[d] && CATDAY[d][c.k] ? CATDAY[d][c.k].t : 0));
+    const max = Math.max(1, ...daily);
+    return `<button class="sm" data-c="${esc(c.k)}" aria-label="${esc(c.n)}, ${tot[c.k].t} posts in range, open on the Categories tab">
+      <div class="smhead">
+        <span class="smname"><i class="dot" style="background:var(--${c.v})"></i><span>${esc(c.n)}</span></span>
+        <span class="smtot">${nf(tot[c.k].t)}</span>
+      </div>
+      <div class="spark" title="${esc(c.n)}: peak ${nf(max)} in one day">
+        ${daily.map(n=>`<i style="height:${(n/max*100).toFixed(2)}%;background:var(--${c.v})"></i>`).join('')}
+      </div>
+      <div class="smfoot"><span>${esc(dates[0]||'')}</span><span>peak ${nf(max)}/day</span><span>${esc(dates[dates.length-1]||'')}</span></div>
+    </button>`;
+  }).join('');
 }
 
-function render(){
+function renderOverview(){
   tiles();
-  document.getElementById('ch-l').innerHTML = chart('l');
-  document.getElementById('ch-r').innerHTML = chart('r');
-  document.getElementById('ch-c').innerHTML = chart('c');
-  document.querySelectorAll('.plot').forEach(p => p.onclick = e => {
-    const b = e.target.closest('button[data-d]'); if(!b) return;
-    sel = b.dataset.d === sel ? null : b.dataset.d; dq=''; render();
-    if(sel) document.getElementById('day').scrollIntoView({behavior:'smooth',block:'nearest'});
-  });
-  dayPanel();
+  $('ch-l').innerHTML = chart('l');
+  $('ch-r').innerHTML = chart('r');
+  $('ch-c').innerHTML = chart('c');
+  smallMultiples();
 }
 
-const ranges=[['14 days',14],['30 days',30],['90 days',90],['All',  'all']];
-document.getElementById('rangebar').insertAdjacentHTML('beforeend',
-  ranges.map(([n,v])=>`<button class="rbtn" data-r="${v}" aria-pressed="${v===range}">${n}</button>`).join(''));
-document.getElementById('rangebar').addEventListener('click', e=>{
-  const b=e.target.closest('.rbtn'); if(!b) return;
-  range = b.dataset.r==='all' ? 'all' : +b.dataset.r;
-  document.querySelectorAll('.rbtn').forEach(x=>x.setAttribute('aria-pressed', x===b));
-  render();
+/* ---------- posts ---------- */
+function renderPosts(){
+  const inp = $('pdate');
+  inp.min = FIRST; inp.max = LAST; inp.value = pDate;
+  const i = DATES.indexOf(pDate);
+  $('pprev').disabled = i <= 0;
+  $('pnext').disabled = i < 0 || i >= DATES.length-1;
+
+  const row = S.find(x=>x.d===pDate) || {l:0,r:0,c:0};
+  const rows = P.posts[pDate] || [];
+  const q = pQ.toLowerCase();
+  const list = rows.filter(r =>
+    (pKind === 'all' || r[2] === pKind) &&
+    (!q || (r[3]+' '+r[4]+' '+r[5]+' '+r[6]+' '+r[7]+' '+r[8]+' '+r[9]).toLowerCase().includes(q)));
+
+  const head = `<div class="card" style="gap:12px">
+    <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline">
+      <h2 class="sec">${esc(fmtDay(pDate))}</h2>
+      <div class="daysum"><span>Listings <b>${row.l}</b></span><span>Reels <b>${row.r}</b></span><span>Community <b>${row.c}</b></span><span>Total <b>${row.l+row.r+row.c}</b></span></div>
+    </div></div>`;
+
+  if(!rows.length){ $('pbody').innerHTML = head + `<div class="empty">No posts recorded on this date.</div>`; return; }
+  if(!list.length){ $('pbody').innerHTML = head + `<div class="empty">No post on this day matches that filter.</div>`; return; }
+
+  $('pbody').innerHTML = head + `<div class="scroll"><table>
+    <thead><tr><th>Time</th><th>Kind</th><th>Title</th><th>Category</th><th class="num">Price</th><th>City</th><th class="num">Ad&nbsp;ID</th></tr></thead>
+    <tbody>${list.map(r=>{
+      const bm = [r[4],r[5],r[6]].filter(Boolean).join(' · ');
+      const price = r[10]==='' ? '—' : nf(r[10])+' '+esc(r[11]);
+      return `<tr>
+        <td class="mono">${esc(r[1])}</td>
+        <td><span class="pill ${KIND[r[2]].pill}">${KIND[r[2]].label}</span></td>
+        <td class="ttl"><a href="https://alleasyway.com/${r[2]==='r'?'reel':'annonce'}/${esc(r[12])}" target="_blank" rel="noopener">${esc(r[3])||'untitled'}</a>${bm?`<em>${esc(bm)}</em>`:''}</td>
+        <td class="cat">${esc(r[7]||'—')}${r[8]?`<em>${esc(r[8])}</em>`:''}</td>
+        <td class="mono num">${price}</td>
+        <td class="mono">${esc(r[9]||'—')}</td>
+        <td class="mono num">${r[0]}</td></tr>`;}).join('')}</tbody></table></div>
+    <p class="mono" style="font-size:12px;margin:10px 0 0">Showing ${nf(list.length)} of ${nf(rows.length)} posts on this day.</p>`;
+}
+
+/* ---------- categories ---------- */
+function renderCats(){
+  $('cmode').innerHTML = `<strong>Period</strong>` +
+    [['Single day','day'],['Date range','range']].map(([n,v])=>
+      `<button class="rbtn" data-m="${v}" aria-pressed="${v===cMode}">${n}</button>`).join('');
+
+  $('cwhen').innerHTML = cMode === 'day'
+    ? `<strong>Day</strong><button class="step" id="cprev" aria-label="Previous day">&larr;</button>
+       <input type="date" id="cdate" min="${FIRST}" max="${LAST}" value="${cDate}" aria-label="Choose a date">
+       <button class="step" id="cnext" aria-label="Next day">&rarr;</button>`
+    : `<strong>Range</strong>` + [['14 days',14],['30 days',30],['90 days',90],['All',  'all']].map(([n,v])=>
+       `<button class="rbtn" data-r="${v}" aria-pressed="${v===cRange}">${n}</button>`).join('');
+
+  const dates = cMode === 'day' ? [cDate] : (cRange === 'all' ? DATES : DATES.slice(-cRange));
+  const tot = catTotals(dates);
+  const grand = CATS.reduce((a,c)=>a+tot[c.k].t, 0);
+  const label = cMode === 'day' ? fmtDay(cDate) : `${dates.length} days to ${LAST}`;
+
+  if(!grand){
+    $('cchart').innerHTML = `<h2 class="sec">${esc(label)}</h2><div class="empty">No posts in this period.</div>`;
+    $('ctable').innerHTML = '';
+    return;
+  }
+
+  const ranked = CATS.slice().sort((a,b)=>tot[b.k].t - tot[a.k].t).filter(c=>tot[c.k].t > 0);
+  const max = Math.max(...ranked.map(c=>tot[c.k].t));
+
+  $('cchart').innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline">
+      <h2 class="sec">${esc(label)}</h2>
+      <span class="mono" style="font-size:12px">${nf(grand)} posts across ${ranked.length} categories</span>
+    </div>
+    <div class="share" role="img" aria-label="Share of posts by category: ${ranked.map(c=>`${c.n} ${pct(tot[c.k].t,grand)}`).join(', ')}">
+      ${ranked.map(c=>`<i style="flex:${tot[c.k].t};background:var(--${c.v})" title="${esc(c.n)}: ${nf(tot[c.k].t)} (${pct(tot[c.k].t,grand)})"></i>`).join('')}
+    </div>
+    <div class="legend">${ranked.map(c=>`<span><i class="dot" style="background:var(--${c.v})"></i>${esc(c.n)}</span>`).join('')}</div>
+    <div class="hbars">
+      ${ranked.map(c=>`<div class="hrow">
+        <span class="hn">${esc(c.n)}</span>
+        <span class="htrack"><i style="width:${(tot[c.k].t/max*100).toFixed(2)}%;background:var(--${c.v})" title="${esc(c.n)}: ${nf(tot[c.k].t)}"></i></span>
+        <span class="hval">${nf(tot[c.k].t)}<em>${pct(tot[c.k].t,grand)}</em></span>
+      </div>`).join('')}
+    </div>`;
+
+  const cols = [['n','Category',0],['l','Listings',1],['r','Reels',1],['c','Community',1],['t','Total',1],['s','Share',1]];
+  const sorted = CATS.filter(c=>tot[c.k].t > 0).sort((a,b)=>{
+    if(cSort.k === 'n') return cSort.dir * a.n.localeCompare(b.n);
+    if(cSort.k === 's') return cSort.dir * (tot[a.k].t - tot[b.k].t);
+    return cSort.dir * (tot[a.k][cSort.k] - tot[b.k][cSort.k]);
+  });
+  $('ctable').innerHTML = `<div class="scroll"><table>
+    <thead><tr>${cols.map(([k,n,num])=>
+      `<th class="s${num?' num':''}" data-k="${k}"${cSort.k===k?` aria-sort="${cSort.dir<0?'descending':'ascending'}"`:''}>${n}</th>`).join('')}</tr></thead>
+    <tbody>${sorted.map(c=>{const v=tot[c.k];return `<tr>
+      <td><span class="dot" style="background:var(--${c.v});margin-right:8px"></span>${esc(c.n)}</td>
+      <td class="mono num">${nf(v.l)}</td><td class="mono num">${nf(v.r)}</td><td class="mono num">${nf(v.c)}</td>
+      <td class="mono num" style="color:var(--fg)">${nf(v.t)}</td><td class="mono num">${pct(v.t,grand)}</td></tr>`;}).join('')}
+    </tbody></table></div>`;
+}
+
+/* ---------- routing + events ---------- */
+function show(t){
+  tab = t;
+  for(const b of $('tabs').children) b.setAttribute('aria-selected', b.dataset.t === t);
+  for(const n of ['overview','posts','categories']) $('p-'+n).hidden = (n !== t);
+  if(location.hash.slice(1) !== t) history.replaceState(null, '', '#'+t);
+  if(t === 'overview') renderOverview();
+  if(t === 'posts') renderPosts();
+  if(t === 'categories') renderCats();
+}
+function openDay(d){ pDate = d; pQ = ''; pKind = 'all'; paintKindBar(); show('posts'); window.scrollTo({top:0,behavior:'smooth'}); }
+
+$('tabs').onclick = e => { const b = e.target.closest('button[data-t]'); if(b) show(b.dataset.t); };
+window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if(['overview','posts','categories'].includes(h) && h !== tab) show(h); });
+
+$('rangebar').insertAdjacentHTML('beforeend',
+  [['14 days',14],['30 days',30],['90 days',90],['All','all']].map(([n,v])=>
+    `<button class="rbtn" data-r="${v}" aria-pressed="${v===range}">${n}</button>`).join(''));
+$('rangebar').onclick = e => {
+  const b = e.target.closest('.rbtn'); if(!b) return;
+  range = b.dataset.r === 'all' ? 'all' : +b.dataset.r;
+  for(const x of $('rangebar').querySelectorAll('.rbtn')) x.setAttribute('aria-pressed', x === b);
+  renderOverview();
+};
+for(const id of ['ch-l','ch-r','ch-c']) $(id).addEventListener('click', e => {
+  const b = e.target.closest('button[data-d]'); if(b) openDay(b.dataset.d);
+});
+$('smgrid').addEventListener('click', e => {
+  const b = e.target.closest('button[data-c]'); if(!b) return;
+  cMode = 'range'; cRange = range; show('categories');
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+function paintKindBar(){
+  $('pkind').innerHTML = `<strong>Show</strong>` +
+    [['All kinds','all',''],['Listings','l','listing'],['Reels','r','reel'],['Community','c','community']].map(([n,v,cls])=>
+      `<button class="rbtn" data-k="${v}" aria-pressed="${v===pKind}">${cls?`<i class="sw" style="background:var(--${cls})"></i>`:''}${n}</button>`).join('');
+}
+paintKindBar();
+$('pkind').onclick = e => { const b = e.target.closest('.rbtn'); if(!b) return; pKind = b.dataset.k; paintKindBar(); renderPosts(); };
+$('pdate').onchange = e => { if(e.target.value){ pDate = e.target.value; renderPosts(); } };
+$('pprev').onclick = () => { const i = DATES.indexOf(pDate); if(i > 0){ pDate = DATES[i-1]; renderPosts(); } };
+$('pnext').onclick = () => { const i = DATES.indexOf(pDate); if(i >= 0 && i < DATES.length-1){ pDate = DATES[i+1]; renderPosts(); } };
+$('platest').onclick = () => { pDate = LAST; renderPosts(); };
+$('psearch').addEventListener('input', e => { pQ = e.target.value; renderPosts(); });
+
+$('cmode').addEventListener('click', e => { const b = e.target.closest('[data-m]'); if(b){ cMode = b.dataset.m; renderCats(); } });
+$('cwhen').addEventListener('click', e => {
+  const r = e.target.closest('[data-r]');
+  if(r){ cRange = r.dataset.r === 'all' ? 'all' : +r.dataset.r; renderCats(); return; }
+  const s = e.target.closest('.step');
+  if(s){ const i = DATES.indexOf(cDate);
+    if(s.id === 'cprev' && i > 0) cDate = DATES[i-1];
+    if(s.id === 'cnext' && i >= 0 && i < DATES.length-1) cDate = DATES[i+1];
+    renderCats(); }
+});
+$('cwhen').addEventListener('change', e => { if(e.target.id === 'cdate' && e.target.value){ cDate = e.target.value; renderCats(); } });
+$('ctable').addEventListener('click', e => {
+  const th = e.target.closest('th[data-k]'); if(!th) return;
+  const k = th.dataset.k;
+  cSort = (cSort.k === k) ? {k, dir: -cSort.dir} : {k, dir: k === 'n' ? 1 : -1};
+  renderCats();
 });
 
 const last = P.runs[P.runs.length-1];
 if(last){
-  document.getElementById('eyebrow').textContent = 'alleasyway.com · last collected ' + last.at.replace('T',' ').slice(0,16);
-  document.getElementById('foot').innerHTML =
+  $('eyebrow').textContent = 'alleasyway.com · last collected ' + last.at.replace('T',' ').slice(0,16);
+  $('foot').innerHTML =
     `Collected twice daily at 00:00 and 12:00 Sri Lanka time. Latest run added <code>${last.added}</code> new posts for a total of <code>${nf(last.total)}</code>; ad-number coverage <code>${last.coverage}%</code>. ` +
-    `Posts are keyed by the site&rsquo;s sequential ad number, so a post counted once is never dropped from history even if the seller later removes it. Days before the most recent 120 keep counts without per-post detail.`;
+    `Posts are keyed by the site&rsquo;s sequential ad number, so a post counted once is never dropped from history even if the seller later removes it. ` +
+    `Reels carry no category of their own and are counted under Other.`;
 }
-sel = S.length ? S[S.length-1].d : null;
-render();
+
+show(['overview','posts','categories'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview');
 </script>

@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AllEasyWay Posting Monitor</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -64,8 +68,9 @@ section[hidden]{display:none}
   background:var(--surface);color:var(--fg-dim);cursor:pointer}
 .rbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .rbtn .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:baseline}
-input[type="date"],input[type="search"]{font-family:var(--font-body);font-size:13.5px;padding:7px 12px;
+input[type="date"],input[type="search"],select{font-family:var(--font-body);font-size:13.5px;padding:7px 12px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)}
+select{cursor:pointer;max-width:260px}
 input[type="search"]{width:100%;background:var(--bg)}
 .step{font-family:var(--font-data);font-size:14px;line-height:1;padding:7px 12px;border-radius:8px;
   border:1px solid var(--line);background:var(--surface);color:var(--fg-dim);cursor:pointer}
@@ -153,8 +158,15 @@ footer code{font-family:var(--font-data);font-size:11.5px;color:var(--fg-dim)}
 <header>
   <p class="eyebrow" id="eyebrow">alleasyway.com</p>
   <h1>Daily posting monitor</h1>
-  <p class="sub">Listings, reels and community posts on alleasyway.com, in Sri Lanka time.</p>
+  <p class="sub">Listings, reels and community posts on alleasyway.com, in Sri Lanka time.
+     Counts cover whole days only, so the newest day shown is <b id="through">yesterday</b>.</p>
 </header>
+
+<div class="ctl" id="cbar">
+  <strong>Country</strong>
+  <select id="country" aria-label="Filter every tab by country"></select>
+  <span class="mono" id="cnote" style="font-size:11.5px;color:var(--fg-faint)"></span>
+</div>
 
 <nav class="tabs" role="tablist" id="tabs">
   <button role="tab" data-t="overview"   aria-selected="true">Overview</button>
@@ -227,20 +239,39 @@ const pct = (a,b) => b ? (100*a/b).toFixed(1)+'%' : '0%';
 const fmtDay = d => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 const $ = id => document.getElementById(id);
 
-const S = P.series;
-const DATES = S.map(x => x.d);
+const DATES = P.series.map(x => x.d);
 const FIRST = DATES[0], LAST = DATES[DATES.length-1];
 
-/* date -> category -> {l,r,c,t}, built once from the post detail. */
-const CATDAY = {};
-for(const d in P.posts){
-  const m = {};
-  for(const r of P.posts[d]){
-    const k = normCat(r[7]);
-    (m[k] = m[k] || {l:0,r:0,c:0,t:0})[r[2]]++;
-    m[k].t++;
+/* Country filter. Every count on every tab is derived from the per-post detail,
+   so one filter drives the whole page and the totals can never disagree. */
+const CNAME = {LK:'Sri Lanka',FR:'France',GB:'United Kingdom',IN:'India',DE:'Germany',
+  CA:'Canada',QA:'Qatar',CH:'Switzerland',AU:'Australia',KW:'Kuwait',US:'United States',
+  IT:'Italy',AE:'United Arab Emirates',NL:'Netherlands',BE:'Belgium',SG:'Singapore',
+  MY:'Malaysia',NO:'Norway',SE:'Sweden',DK:'Denmark',ES:'Spain',NZ:'New Zealand',
+  SA:'Saudi Arabia',OM:'Oman',BH:'Bahrain',JP:'Japan',IE:'Ireland',AT:'Austria'};
+const cName = c => CNAME[c] || c || 'Unknown';
+
+let country = 'all';
+const keep = r => country === 'all' || (r[13] || '') === country;
+const rowsOn = d => (P.posts[d] || []).filter(keep);
+
+let S = [], CATDAY = {};
+function recompute(){
+  S = DATES.map(d => {
+    const o = {d, l:0, r:0, c:0};
+    for(const r of rowsOn(d)) o[r[2]]++;
+    return o;
+  });
+  CATDAY = {};
+  for(const d of DATES){
+    const m = {};
+    for(const r of rowsOn(d)){
+      const k = normCat(r[7]);
+      (m[k] = m[k] || {l:0,r:0,c:0,t:0})[r[2]]++;
+      m[k].t++;
+    }
+    CATDAY[d] = m;
   }
-  CATDAY[d] = m;
 }
 function catTotals(dates){
   const out = {}; for(const c of CATS) out[c.k] = {l:0,r:0,c:0,t:0};
@@ -323,11 +354,11 @@ function renderPosts(){
   $('pnext').disabled = i < 0 || i >= DATES.length-1;
 
   const row = S.find(x=>x.d===pDate) || {l:0,r:0,c:0};
-  const rows = P.posts[pDate] || [];
+  const rows = rowsOn(pDate);
   const q = pQ.toLowerCase();
   const list = rows.filter(r =>
     (pKind === 'all' || r[2] === pKind) &&
-    (!q || (r[3]+' '+r[4]+' '+r[5]+' '+r[6]+' '+r[7]+' '+r[8]+' '+r[9]).toLowerCase().includes(q)));
+    (!q || (r[3]+' '+r[4]+' '+r[5]+' '+r[6]+' '+r[7]+' '+r[8]+' '+r[9]+' '+cName(r[13])).toLowerCase().includes(q)));
 
   const head = `<div class="card" style="gap:12px">
     <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline">
@@ -349,7 +380,7 @@ function renderPosts(){
         <td class="ttl"><a href="https://alleasyway.com/${r[2]==='r'?'reel':'annonce'}/${esc(r[12])}" target="_blank" rel="noopener">${esc(r[3])||'untitled'}</a>${bm?`<em>${esc(bm)}</em>`:''}</td>
         <td class="cat">${esc(r[7]||'—')}${r[8]?`<em>${esc(r[8])}</em>`:''}</td>
         <td class="mono num">${price}</td>
-        <td class="mono">${esc(r[9]||'—')}</td>
+        <td class="cat"><span class="mono">${esc(r[9]||'—')}</span><em>${esc(cName(r[13]))}</em></td>
         <td class="mono num">${r[0]}</td></tr>`;}).join('')}</tbody></table></div>
     <p class="mono" style="font-size:12px;margin:10px 0 0">Showing ${nf(list.length)} of ${nf(rows.length)} posts on this day.</p>`;
 }
@@ -478,14 +509,38 @@ $('ctable').addEventListener('click', e => {
   renderCats();
 });
 
+/* ---------- country filter ---------- */
+const tally = {};
+for(const d of DATES) for(const r of (P.posts[d] || [])) tally[r[13] || ''] = (tally[r[13] || ''] || 0) + 1;
+const codes = Object.keys(tally).sort((a,b) => tally[b] - tally[a]);
+const grandAll = codes.reduce((a,c) => a + tally[c], 0);
+$('country').innerHTML = `<option value="all">All countries &mdash; ${nf(grandAll)} posts</option>` +
+  codes.map(c => `<option value="${esc(c)}">${esc(cName(c))} &mdash; ${nf(tally[c])}</option>`).join('');
+$('country').onchange = e => {
+  country = e.target.value;
+  recompute();
+  $('cnote').textContent = country === 'all'
+    ? 'every country the site serves'
+    : nf(tally[country] || 0) + ' posts from ' + cName(country);
+  show(tab);
+};
+
 const last = P.runs[P.runs.length-1];
 if(last){
   $('eyebrow').textContent = 'alleasyway.com · last collected ' + last.at.replace('T',' ').slice(0,16);
+  const cov = last.coverage === undefined ? '' :
+    ` It held <code>${last.coverage}%</code> of the posts the site lists in its sitemap` +
+    (last.unresolved ? `, with <code>${last.unresolved}</code> it could not fetch.` : ', the whole inventory.');
   $('foot').innerHTML =
-    `Collected twice daily at 00:00 and 12:00 Sri Lanka time. Latest run added <code>${last.added}</code> new posts for a total of <code>${nf(last.total)}</code>; ad-number coverage <code>${last.coverage}%</code>. ` +
+    `Collected once a day, just after midnight Sri Lanka time, so every day on this page is a day that has finished. ` +
+    `Today is deliberately not shown${P.pending ? ` (<code>${nf(P.pending)}</code> posts so far today are held back until the day is over)` : ''}. ` +
+    `The latest run added <code>${nf(last.added)}</code> posts for a total of <code>${nf(last.total)}</code>.${cov} ` +
     `Posts are keyed by the site&rsquo;s sequential ad number, so a post counted once is never dropped from history even if the seller later removes it. ` +
     `Reels carry no category of their own and are counted under Other.`;
 }
+if(P.through) $('through').textContent = fmtDay(P.through);
 
+recompute();
+$('cnote').textContent = 'every country the site serves';
 show(['overview','posts','categories'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview');
 </script>
